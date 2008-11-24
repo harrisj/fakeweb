@@ -193,6 +193,12 @@ module FakeWeb
 
     def blocked_response_for(uri, &block)
       responder = blocked_uri_responder(uri)
+
+			# Yeah, it kinda sucks to short-circuit here, but the responder doesn't get the request URI
+			if responder.options.has_key?(:flunk)
+				raise Test::Unit::AssertionFailedError, "Unexpected call to blocked URI #{uri}"
+			end
+			
       return responder.response(&block)
     end
 
@@ -233,8 +239,6 @@ module FakeWeb
     end
 
     def response(&block)
-			optionally_flunk
-			
       if has_baked_response?
         response = baked_response
       else
@@ -287,11 +291,6 @@ module FakeWeb
     def has_baked_response?
       options.has_key?(:response)
     end
-
-		def optionally_flunk
-			return unless options.has_key?(:flunk)
-			raise Test::Unit::AssertionFailedError, "Unexpected call to blocked URI #{uri}"
-		end
 
     def optionally_raise(response)
       return unless options.has_key?(:exception)
