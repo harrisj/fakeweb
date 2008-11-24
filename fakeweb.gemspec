@@ -3,7 +3,7 @@ Gem::Specification.new do |s|
   s.version  = "1.1.2.4" 
   s.date     = "2008-10-29"
   s.summary  = "A test helper that makes it simple to test HTTP interaction"
-  s.homepage = "http://github.com/chrisk/fakeweb"
+  s.homepage = "http://github.com/harrisj/fakeweb"
   s.has_rdoc = true
   s.authors  = ["Blaine Cook"]
   s.files    = ["CHANGELOG", "COPYING", "fakeweb.gemspec", "Rakefile", "README.rdoc",
