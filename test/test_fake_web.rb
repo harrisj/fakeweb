@@ -77,6 +77,43 @@ class TestFakeWeb < Test::Unit::TestCase
     assert FakeWeb.registered_uri?('http://example.com/?b=1&a=1')
   end
 
+	def test_block_uri_with_domain_name
+		FakeWeb.block_uri_pattern('example.com')
+		assert !FakeWeb.blocked_uri?('http://www.example.com/foo')
+		assert !FakeWeb.blocked_uri?('http//assets.example.com/')
+	end
+	
+	def test_block_uri_with_host_name
+		FakeWeb.block_uri_pattern('www.example.com')
+		assert FakeWeb.blocked_uri?('http://www.example.com/foo')
+		assert !FakeWeb.blocked_uri?('http//assets.example.com/')
+	end
+	
+	def test_block_uri_with_string_path
+		FakeWeb.block_uri_pattern('www.example.com/foo')
+		assert FakeWeb.blocked_uri?('http://www.example.com/foo/bar')
+		assert !FakeWeb.blocked_uri?('http://www.example.com/baz')
+	end
+	
+	def test_block_uri_with_string_and_literal_flag
+		FakeWeb.block_uri_pattern('http://www.example.com/foo', :literal => true)
+		assert FakeWeb.blocked_uri?('http://www.example.com/foo')
+		assert !FakeWeb.blocked_uri?('http://www.example.com/foo/bar')
+	end
+	
+	def test_block_uri_with_regexp
+		FakeWeb.block_uri_pattern(/foo/)
+		assert FakeWeb.blocked_uri?('http://www.example.com/foo/bar')
+		assert FakeWeb.blocked_uri?('http://www.bar.com/foo/baz')
+	end
+
+	def test_block_response_should_default_to_flunk
+		FakeWeb.block_uri_pattern('www.example.com/foo')
+		responder = FakeWeb::Registry.instance.blocked_uri_responder('www.example.com/foo')
+		assert_not_nil responder
+		assert responder.options[:flunk]
+	end
+
   def test_content_for_registered_uri
     assert_equal 'test example content', FakeWeb.response_for('http://mock/test_example.txt').body
   end
@@ -138,7 +175,6 @@ class TestFakeWeb < Test::Unit::TestCase
       assert_equal 'port 3000', response.body
     end
   end
-
 
   def test_mock_request_with_block
     Net::HTTP.start('mock') do |http|
@@ -362,4 +398,30 @@ class TestFakeWeb < Test::Unit::TestCase
     3.times { assert_equal 'thrice',               Net::HTTP.get(uri) }
     4.times { assert_equal 'ever_more',            Net::HTTP.get(uri) }
   end
+
+	def test_block_request_flunk
+		FakeWeb.block_uri_pattern('http://www.apple.com/')
+		assert_raises(Test::Unit::AssertionFailedError) do
+			Net::HTTP.start('www.apple.com') { |http| http.get('/iphone') }
+		end
+	end
+	
+	def test_block_request_exception_with_status
+		FakeWeb.block_uri_pattern('http://mock/', :exception => Net::HTTPError, :status => ['404', 'Not Found'])
+    exception = assert_raises(Net::HTTPError) do
+      Net::HTTP.start('mock') { |http| response = http.get('/raising_exception.txt') }
+    end
+    assert_equal '404', exception.response.code
+    assert_equal 'Not Found', exception.response.msg
+	end
+	
+	def test_block_post
+		FakeWeb.block_uri_pattern('http://mock/', :exception => StandardError)
+    assert_raises(StandardError) do
+      Net::HTTP.start('mock') do |query|
+        query.post('/raising_exception.txt', 'some data')
+      end
+    end
+	end
+
 end

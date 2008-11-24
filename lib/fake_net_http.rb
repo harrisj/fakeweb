@@ -56,6 +56,9 @@ module Net #:nodoc:
       if FakeWeb.registered_uri?(uri)
         @socket = Net::HTTP.socket_type.new
         return FakeWeb.response_for(uri, &block)
+			elsif FakeWeb.blocked_uri?(uri)
+				@socket = Net::HTTP.socket_type.new
+				return FakeWeb.blocked_response_for(uri, &block)
       else
         original_net_http_connect
         return original_net_http_request(req, body, &block)

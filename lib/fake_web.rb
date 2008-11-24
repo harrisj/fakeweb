@@ -83,10 +83,20 @@ module FakeWeb
   #   The argument passed via <tt>:exception</tt> will be raised when the
   #   specified URL is requested. Any +Exception+ class is valid. Example:
   #     FakeWeb.register_uri('http://www.example.com/', :exception => Net::HTTPError)
-  #
+  # <tt>:flunk</tt>::
+  #   Calls flunk if the URL is called (useful in unit testing scenarios where you want to verify a URL is NOT called)
   def self.register_uri(uri, options)
     Registry.instance.register_uri(uri, options)
   end
+
+	# Blocks outgoing requests to a URI pattern. This allows you to prevent requests from being sent out for different URIs than the
+	# ones you have explicitly registered. Explicitly registered URIs are always allowed, even if they match a block pattern.
+	#
+	# The block pattern can be either a String or a Regexp. If a String, it will be match all URLs starting with that string, unless the
+	# <tt>:literal => true</tt> option is specified
+	def self.block_uri_pattern(pattern, options={})
+		Registry.instance.block_uri_pattern(pattern, options)
+	end
 
   # Returns the faked Net::HTTPResponse object associated with +uri+.
   def self.response_for(uri, &block) #:nodoc: :yields: response
@@ -98,10 +108,20 @@ module FakeWeb
     Registry.instance.registered_uri?(uri)
   end
 
+	# Checks if the +uri+ is blocked in the +FakeWeb+ registry.
+	def self.blocked_uri?(uri)
+		Registry.instance.blocked_uri?(uri)
+	end
+	
+	# Returns the faked Net::HTTPResponse object associated with +uri+.
+  def self.blocked_response_for(uri, &block) #:nodoc: :yields: response
+    Registry.instance.blocked_response_for(uri, &block)
+  end
+	
   class Registry #:nodoc:
     include Singleton
 
-    attr_accessor :uri_map
+    attr_accessor :uri_map, :block_patterns
 
     def initialize
       clean_registry
@@ -109,6 +129,7 @@ module FakeWeb
 
     def clean_registry
       self.uri_map = {}
+			self.block_patterns = []
     end
 
     def register_uri(uri, options)
@@ -117,14 +138,43 @@ module FakeWeb
       }
     end
 
+		def block_uri_pattern(uri, options={})
+			literal = options.delete(:literal)
+			options.delete(:times)
+			options[:flunk] = true if options.empty?
+			
+			if literal
+				self.block_patterns << {:pattern => /^#{uri}$/, :responder => FakeWeb::Responder.new(uri, options, nil)}
+			elsif uri.is_a? String
+				self.block_patterns << {:pattern => /^#{normalize_uri(uri)}/, :responder => FakeWeb::Responder.new(uri, options, nil)}
+			elsif uri.is_a? Regexp
+				self.block_patterns << {:pattern => uri, :responder => FakeWeb::Responder.new(uri.to_s, options, nil)}
+			else
+				raise ArgumentError, "Block pattern must be a string or a regex"
+			end
+		end
+
     def registered_uri?(uri)
       uri_map.has_key?(normalize_uri(uri))
     end
+
+		def blocked_uri?(uri)
+			normalized = normalize_uri(uri).to_s
+			block_patterns.any? {|b| normalized =~ b[:pattern] }
+		end
 
     def registered_uri(uri)
       uri = normalize_uri(uri)
       return uri_map[uri] if registered_uri?(uri)
     end
+
+		def blocked_uri_responder(uri)
+			normalized = normalize_uri(uri).to_s
+			match = block_patterns.detect {|b| normalized =~ b[:pattern] }
+			unless match.nil?
+				match[:responder]
+			end
+		end
 
     def response_for(uri, &block)
       responses = registered_uri(uri)
@@ -139,6 +189,11 @@ module FakeWeb
       }
 
       return next_response.response(&block)
+    end
+
+    def blocked_response_for(uri, &block)
+      responder = blocked_uri_responder(uri)
+      return responder.response(&block)
     end
 
     private
@@ -178,6 +233,8 @@ module FakeWeb
     end
 
     def response(&block)
+			optionally_flunk
+			
       if has_baked_response?
         response = baked_response
       else
@@ -230,6 +287,11 @@ module FakeWeb
     def has_baked_response?
       options.has_key?(:response)
     end
+
+		def optionally_flunk
+			return unless options.has_key?(:flunk)
+			raise Test::Unit::AssertionFailedError, "Unexpected call to blocked URI #{uri}"
+		end
 
     def optionally_raise(response)
       return unless options.has_key?(:exception)
