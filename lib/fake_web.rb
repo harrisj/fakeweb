@@ -196,7 +196,13 @@ module FakeWeb
 
 			# Yeah, it kinda sucks to short-circuit here, but the responder doesn't get the request URI
 			if responder.options.has_key?(:flunk)
-				raise Test::Unit::AssertionFailedError, "Unexpected call to blocked URI #{uri}"
+				if responder.options[:flunk].is_a? String
+					msg = responder.options[:flunk]
+				else
+					msg = "Unexpected call to blocked URI #{normalize_uri(uri).to_s}"
+				end
+				
+				raise Test::Unit::AssertionFailedError, msg
 			end
 			
       return responder.response(&block)

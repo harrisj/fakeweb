@@ -198,6 +198,19 @@ class TestFakeWeb < Test::Unit::TestCase
     end
   end
 
+	def test_mock_request_with_uri_read
+		FakeWeb.register_uri('http://example.com/', :string => 'test example content')
+		uri = URI.parse 'http://example.com/'
+    assert_equal 'test example content', uri.read
+	end
+	
+	def test_mock_request_with_uri_read_from_build
+		FakeWeb.register_uri('http://example.com/foo?a=b', :string => 'test example content')
+		uri = URI::HTTP.build :host => 'example.com', :path => "/foo", :query => 'a=b'
+										
+    assert_equal 'test example content', uri.read
+	end
+
   def test_mock_post
     response = nil
     Net::HTTP.start('mock') do |query|
@@ -404,6 +417,15 @@ class TestFakeWeb < Test::Unit::TestCase
 		assert_raises(Test::Unit::AssertionFailedError) do
 			Net::HTTP.start('www.apple.com') { |http| http.get('/iphone') }
 		end
+	end
+	
+	def test_block_request_flunk_with_custom_message
+		FakeWeb.block_uri_pattern('http://www.apple.com/', :flunk => 'doo bee doo')
+		exception = assert_raises(Test::Unit::AssertionFailedError) do
+			Net::HTTP.start('www.apple.com') { |http| http.get('/iphone') }
+		end
+		
+		assert_equal 'doo bee doo', exception.message
 	end
 	
 	def test_block_request_exception_with_status
